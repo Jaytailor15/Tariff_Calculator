@@ -1,48 +1,9 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UGVCL Tariff Calculator</title>
+    <title>UGVCL Prepaid Meter Tariff Calculator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -55,10 +16,14 @@
             margin: 0 auto;
         }
         h1 {
-            font-size: 24px;
+            font-size: 18px;
             text-align: center;
-            color: #333;
+            color: #444;
             margin-bottom: 20px;
+            text-transform: uppercase;
+            background-color: #e0e0e0;
+            padding: 8px;
+            border: 1px solid #ccc;
         }
         h2 {
             font-size: 18px;
@@ -175,6 +140,12 @@
             margin: 5px 0;
             padding-left: 20px;
         }
+        .red-text {
+            color: red;
+        }
+        .green-text {
+            color: green;
+        }
         @media (max-width: 768px) {
             .col {
                 flex: 100%;
@@ -184,7 +155,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>UGVCL Prepaid Tariff Calculator</h1>
+        <h1>UGVCL Prepaid Meter Tariff Calculator</h1>
         <div class="row">
             <!-- Input Form -->
             <div class="col">
@@ -193,6 +164,14 @@
                     <div>
                         <label>Consumer Category (Combination Code)</label>
                         <select id="comboCode"></select>
+                    </div>
+                    <div>
+                        <label>Consumer Number (Optional)</label>
+                        <input type="text" id="consumerNumber" placeholder="Enter Consumer Number">
+                    </div>
+                    <div>
+                        <label>Meter Number (Optional)</label>
+                        <input type="text" id="meterNumber" placeholder="Enter Meter Number">
                     </div>
                     <div>
                         <label>Contract Demand (kW or HP)</label>
@@ -275,6 +254,8 @@
                             </tr>
                         </thead>
                         <tbody>
+                            <tr><td>Consumer Number</td><td id="consumerNumberResult">-</td></tr>
+                            <tr><td>Meter Number</td><td id="meterNumberResult">-</td></tr>
                             <tr><td>Bill Factor</td><td id="billFactor">0.0000</td></tr>
                             <tr><td>Fixed Charge (B)</td><td id="fixedCharge">₹ 0.00</td></tr>
                             <tr><td>Demand Violation Charge (C)</td><td id="demandViolation">₹ 0.00</td></tr>
@@ -327,7 +308,21 @@
             <h2>Reference Tables</h2>
             <div>
                 <h3>Combination Codes</h3>
-                <input type="text" id="searchCombo" placeholder="Search by Category or Sub Type" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;">
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="searchCombo" placeholder="Search by Category or Sub Type" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="filterComboCode" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                            <option value="">All Combo Codes</option>
+                        </select>
+                        <select id="filterCategory" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="filterSubType" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                            <option value="">All Sub Types</option>
+                        </select>
+                        <button type="button" id="clearComboFilters" style="padding: 8px 15px; background-color: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 14px;">Clear Filters</button>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead>
@@ -345,7 +340,13 @@
             </div>
             <div>
                 <h3>Energy Slab Rates</h3>
-                <input type="text" id="searchSlab" placeholder="Search by Category" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="searchSlab" placeholder="Search by Category" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                    <select id="filterSlabCategory" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                        <option value="">All Categories</option>
+                    </select>
+                    <button type="button" id="clearSlabFilters" style="padding: 8px 15px; background-color: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 14px;">Clear Filters</button>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead>
@@ -461,19 +462,19 @@
 
         // Energy Slab Rates
         const slabRates = [
-            { category: 'RGPR', slab: '0-50', rate: 265 }, // NON BP rate for RGPR
+            { category: 'RGPR', slab: '0-50', rate: 265 },
             { category: 'RGPR', slab: '51-100', rate: 310 },
             { category: 'RGPR', slab: '101-250', rate: 375 },
             { category: 'RGPR', slab: '>250', rate: 490 },
-            { category: 'RGPR-BPL', slab: '0-50', rate: 150 }, // BP rate for RGPR
+            { category: 'RGPR-BPL', slab: '0-50', rate: 150 },
             { category: 'RGPR-BPL', slab: '51-100', rate: 310 },
             { category: 'RGPR-BPL', slab: '101-250', rate: 375 },
             { category: 'RGPR-BPL', slab: '>250', rate: 490 },
-            { category: 'RGPU', slab: '0-50', rate: 305 }, // NON BP rate for RGPU
+            { category: 'RGPU', slab: '0-50', rate: 305 },
             { category: 'RGPU', slab: '51-100', rate: 350 },
             { category: 'RGPU', slab: '101-250', rate: 415 },
             { category: 'RGPU', slab: '>250', rate: 520 },
-            { category: 'RGPU-BPL', slab: '0-50', rate: 150 }, // BP rate for RGPU
+            { category: 'RGPU-BPL', slab: '0-50', rate: 150 },
             { category: 'RGPU-BPL', slab: '51-100', rate: 350 },
             { category: 'RGPU-BPL', slab: '101-250', rate: 415 },
             { category: 'RGPU-BPL', slab: '>250', rate: 520 },
@@ -492,62 +493,114 @@
 
         // Populate Combination Codes Dropdown and Table
         const comboSelect = document.getElementById('comboCode');
+        const filterComboCode = document.getElementById('filterComboCode');
+        const filterCategory = document.getElementById('filterCategory');
+        const filterSubType = document.getElementById('filterSubType');
+
+        // Get unique categories and sub types for filters
+        const uniqueCategories = [...new Set(combinationCodes.map(code => code.category))];
+        const uniqueSubTypes = [...new Set(combinationCodes.map(code => code.subType))];
+
+        // Populate filter dropdowns
         combinationCodes.forEach(code => {
             const option = document.createElement('option');
             option.value = code.code;
             option.textContent = `${code.code} - ${code.category} (${code.subType})`;
             comboSelect.appendChild(option);
 
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${code.sl}</td>
-                <td>${code.code}</td>
-                <td>${code.category}</td>
-                <td>${code.subType}</td>
-                <td>${code.ed}%</td>
-            `;
-            document.getElementById('comboTable').appendChild(row);
+            const comboOption = document.createElement('option');
+            comboOption.value = code.code;
+            comboOption.textContent = code.code;
+            filterComboCode.appendChild(comboOption);
         });
 
-        // Populate Slab Rates Table
-        const slabTableBody = document.getElementById('slabTable');
-        slabRates.forEach(slab => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${slab.category}</td>
-                <td>${slab.slab}</td>
-                <td>${slab.rate}</td>
-            `;
-            slabTableBody.appendChild(row);
+        uniqueCategories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            filterCategory.appendChild(option);
         });
 
-        // Search Functionality for Combination Codes
-        document.getElementById('searchCombo').addEventListener('input', function(e) {
-            const search = e.target.value.toLowerCase();
+        uniqueSubTypes.forEach(subType => {
+            const option = document.createElement('option');
+            option.value = subType;
+            option.textContent = subType;
+            filterSubType.appendChild(option);
+        });
+
+        // Function to filter and display combination codes
+        function filterAndDisplayCombinationCodes() {
+            const searchText = document.getElementById('searchCombo').value.toLowerCase();
+            const selectedComboCode = document.getElementById('filterComboCode').value;
+            const selectedCategory = document.getElementById('filterCategory').value;
+            const selectedSubType = document.getElementById('filterSubType').value;
+
             document.getElementById('comboTable').innerHTML = '';
-            combinationCodes.filter(code => 
-                code.category.toLowerCase().includes(search) || 
-                code.subType.toLowerCase().includes(search)
-            ).forEach(code => {
+            combinationCodes.filter(code => {
+                const matchesSearch = !searchText || code.category.toLowerCase().includes(searchText) || 
+                                    code.subType.toLowerCase().includes(searchText);
+                const matchesComboCode = !selectedComboCode || code.code.toString() === selectedComboCode;
+                const matchesCategory = !selectedCategory || code.category === selectedCategory;
+                const matchesSubType = !selectedSubType || code.subType === selectedSubType;
+
+                return matchesSearch && matchesComboCode && matchesCategory && matchesSubType;
+            }).forEach(code => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${code.sl}</td>
                     <td>${code.code}</td>
                     <td>${code.category}</td>
                     <td>${code.subType}</td>
-                    <td>${code.ed}%</td>
+                    <td><span class="red-text">${code.ed}%</span></td>
                 `;
                 document.getElementById('comboTable').appendChild(row);
             });
+        }
+
+        // Add event listeners for all filters
+        document.getElementById('searchCombo').addEventListener('input', filterAndDisplayCombinationCodes);
+        document.getElementById('filterComboCode').addEventListener('change', filterAndDisplayCombinationCodes);
+        document.getElementById('filterCategory').addEventListener('change', filterAndDisplayCombinationCodes);
+        document.getElementById('filterSubType').addEventListener('change', filterAndDisplayCombinationCodes);
+
+        // Initial display of all combination codes
+        filterAndDisplayCombinationCodes();
+
+        // Clear Filters Functionality
+        document.getElementById('clearComboFilters').addEventListener('click', function() {
+            document.getElementById('searchCombo').value = '';
+            document.getElementById('filterComboCode').value = '';
+            document.getElementById('filterCategory').value = '';
+            document.getElementById('filterSubType').value = '';
+            filterAndDisplayCombinationCodes();
         });
 
-        // Search Functionality for Slab Rates
-        document.getElementById('searchSlab').addEventListener('input', function(e) {
-            const search = e.target.value.toLowerCase();
+        // Populate Slab Rates Table
+        const slabTableBody = document.getElementById('slabTable');
+        const filterSlabCategory = document.getElementById('filterSlabCategory');
+
+        // Get unique categories for slab rates filter
+        const uniqueSlabCategories = [...new Set(slabRates.map(slab => slab.category))];
+
+        // Populate slab category filter dropdown
+        uniqueSlabCategories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            filterSlabCategory.appendChild(option);
+        });
+
+        // Function to filter and display slab rates
+        function filterAndDisplaySlabRates() {
+            const searchText = document.getElementById('searchSlab').value.toLowerCase();
+            const selectedCategory = document.getElementById('filterSlabCategory').value;
+
             document.getElementById('slabTable').innerHTML = '';
-            slabRates.filter(slab => 
-                slab.category.toLowerCase().includes(search)
-            ).forEach(slab => {
+            slabRates.filter(slab => {
+                const matchesSearch = slab.category.toLowerCase().includes(searchText);
+                const matchesCategory = !selectedCategory || slab.category === selectedCategory;
+                return matchesSearch && matchesCategory;
+            }).forEach(slab => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${slab.category}</td>
@@ -556,7 +609,21 @@
                 `;
                 document.getElementById('slabTable').appendChild(row);
             });
+        }
+
+        // Add event listeners for slab filters
+        document.getElementById('searchSlab').addEventListener('input', filterAndDisplaySlabRates);
+        document.getElementById('filterSlabCategory').addEventListener('change', filterAndDisplaySlabRates);
+
+        // Clear Filters Functionality
+        document.getElementById('clearSlabFilters').addEventListener('click', function() {
+            document.getElementById('searchSlab').value = '';
+            document.getElementById('filterSlabCategory').value = '';
+            filterAndDisplaySlabRates();
         });
+
+        // Initial display of slab rates
+        filterAndDisplaySlabRates();
 
         // Autofill Logic on Combination Code Change
         document.getElementById('comboCode').addEventListener('change', function() {
@@ -574,6 +641,15 @@
             }
         });
 
+        // Auto-set Month based on Installation Date
+        document.getElementById('installDate').addEventListener('change', function() {
+            const installDate = new Date(this.value);
+            if (!isNaN(installDate)) {
+                const month = installDate.getMonth() + 1; // getMonth() is 0-based, so add 1
+                document.getElementById('month').value = month;
+            }
+        });
+
         // Tariff Calculation Logic with Validation
         function calculateTariff() {
             // Clear previous error messages
@@ -582,6 +658,8 @@
 
             // Get form values (use entered values)
             const comboCode = document.getElementById('comboCode').value;
+            const consumerNumber = document.getElementById('consumerNumber').value;
+            const meterNumber = document.getElementById('meterNumber').value;
             const contractDemand = document.getElementById('contractDemand').value;
             const energyConsumption = document.getElementById('energyConsumption').value;
             const reactiveEnergy = document.getElementById('reactiveEnergy').value;
@@ -672,6 +750,10 @@
             const year = new Date().getFullYear();
             const daysInMonth = new Date(year, parsedMonth, 0).getDate();
 
+            // Display Consumer Number and Meter Number in results
+            document.getElementById('consumerNumberResult').textContent = consumerNumber || '-';
+            document.getElementById('meterNumberResult').textContent = meterNumber || '-';
+
             // Bill Factor
             let billFactor = 1.0000;
             let billFactorFormula = '1.0000';
@@ -702,16 +784,13 @@
                     if (parsedContractDemand <= 2) {
                         fixedCharge = 15.00;
                         fixedChargeFormula = `15.00 * ${billFactor} / ${daysInMonth}`;
-                    }
-                    else if (parsedContractDemand <= 4) {
+                    } else if (parsedContractDemand <= 4) {
                         fixedCharge = 25.00;
                         fixedChargeFormula = `25.00 * ${billFactor} / ${daysInMonth}`;
-                    }
-                    else if (parsedContractDemand <= 6) {
+                    } else if (parsedContractDemand <= 6) {
                         fixedCharge = 25.00;
                         fixedChargeFormula = `45.00 * ${billFactor} / ${daysInMonth}`;
-                    }
-                    else {
+                    } else {
                         fixedCharge = 70.00;
                         fixedChargeFormula = `70.00 * ${billFactor} / ${daysInMonth}`;
                     }
@@ -767,16 +846,13 @@
                 if (parsedContractDemand <= 2) {
                     newFixedCharge = 15.00;
                     newFixedChargeFormula = '15.00';
-                }
-                else if (parsedContractDemand <= 4) {
+                } else if (parsedContractDemand <= 4) {
                     newFixedCharge = 25.00;
                     newFixedChargeFormula = '25.00';
-                }
-                else if (parsedContractDemand <= 6) {
+                } else if (parsedContractDemand <= 6) {
                     newFixedCharge = 45.00;
                     newFixedChargeFormula = '45.00';
-                }
-                else {
+                } else {
                     newFixedCharge = 70.00;
                     newFixedChargeFormula = '70.00';
                 }
@@ -889,14 +965,14 @@
 
             // FPPPA Charge (E)
             const fpppaCharge = (parsedEnergyConsumption * parsedFpppaRate).toFixed(2);
-            const fpppaChargeFormula = `${parsedEnergyConsumption} * ${parsedFpppaRate}`;
+            const fpppaChargeFormula = `${String(parsedEnergyConsumption)} * ${String(parsedFpppaRate)}`;
             document.getElementById('fpppaCharge').textContent = `₹ ${fpppaCharge}`;
             document.getElementById('fpppaChargeFormula').textContent = fpppaChargeFormula;
             document.getElementById('fpppaChargeValue').textContent = `₹ ${fpppaCharge}`;
 
             // Reactive Energy Charge (F)
             const reactiveCharge = category === 'LTMD' ? (parsedReactiveEnergy * 0.10).toFixed(2) : '0.00';
-            const reactiveChargeFormula = category === 'LTMD' ? `${parsedReactiveEnergy} * 0.10` : '0.00';
+            const reactiveChargeFormula = category === 'LTMD' ? `${String(parsedReactiveEnergy)} * 0.10` : '0.00';
             document.getElementById('reactiveCharge').textContent = `₹ ${reactiveCharge}`;
             document.getElementById('reactiveChargeFormula').textContent = reactiveChargeFormula;
             document.getElementById('reactiveChargeValue').textContent = `₹ ${reactiveCharge}`;
@@ -912,14 +988,14 @@
                 edCondition = ' (No consumption)';
             }
             const electricityDuty = ((parseFloat(fixedCharge) + parseFloat(demandViolation) + parseFloat(energyCharge) + parseFloat(fpppaCharge)) * edRate).toFixed(2);
-            const electricityDutyFormula = `(${fixedCharge} + ${demandViolation} + ${energyCharge} + ${fpppaCharge}) * ${edRate}${edCondition}`;
+            const electricityDutyFormula = `(${String(fixedCharge)} + ${String(demandViolation)} + ${String(energyCharge)} + ${String(fpppaCharge)}) * <span class="red-text">${String(edRate)}</span>${edCondition}`;
             document.getElementById('electricityDuty').textContent = `₹ ${electricityDuty}`;
-            document.getElementById('electricityDutyFormula').textContent = electricityDutyFormula;
+            document.getElementById('electricityDutyFormula').innerHTML = electricityDutyFormula;
             document.getElementById('electricityDutyValue').textContent = `₹ ${electricityDuty}`;
 
             // Basic Electricity Charge (H)
             const basicElectricityCharge = (parseFloat(fixedCharge) + parseFloat(demandViolation) + parseFloat(energyCharge) + parseFloat(fpppaCharge) + parseFloat(reactiveCharge) + parseFloat(electricityDuty)).toFixed(2);
-            const basicElectricityChargeFormula = `${fixedCharge} + ${demandViolation} + ${energyCharge} + ${fpppaCharge} + ${reactiveCharge} + ${electricityDuty}`;
+            const basicElectricityChargeFormula = `${String(fixedCharge)} + ${String(demandViolation)} + ${String(energyCharge)} + ${String(fpppaCharge)} + ${String(reactiveCharge)} + ${String(electricityDuty)}`;
             document.getElementById('basicElectricityCharge').textContent = `₹ ${basicElectricityCharge}`;
             document.getElementById('basicElectricityChargeFormula').textContent = basicElectricityChargeFormula;
             document.getElementById('basicElectricityChargeValue').textContent = `₹ ${basicElectricityCharge}`;
@@ -956,10 +1032,11 @@
                 parsedMonthEndReconciliation + 
                 parsedProvisionalAdjustments
             ).toFixed(2);
-            const closingBalanceFormula = `${parsedOpeningBalance} - ${energyCharge} + ${parsedFoaCharge} + ${parsedCreditByUtility} - ${parsedDebitByUtility} + ${parsedCreditPurchased} + ${parsedMonthEndReconciliation} + ${parsedProvisionalAdjustments}`;
-            document.getElementById('closingBalance').textContent = `₹ ${closingBalance}`;
+            const closingBalanceFormula = `${String(parsedOpeningBalance)} - ${String(energyCharge)} + ${String(parsedFoaCharge)} + ${String(parsedCreditByUtility)} - ${String(parsedDebitByUtility)} + ${String(parsedCreditPurchased)} + ${String(parsedMonthEndReconciliation)} + ${String(parsedProvisionalAdjustments)}`;
+            const closingBalanceColor = parseFloat(closingBalance) < 0 ? 'red-text' : 'green-text';
+            document.getElementById('closingBalance').innerHTML = `<span class="${closingBalanceColor}">₹ ${closingBalance}</span>`;
             document.getElementById('closingBalanceFormula').textContent = closingBalanceFormula;
-            document.getElementById('closingBalanceValue').textContent = `₹ ${closingBalance}`;
+            document.getElementById('closingBalanceValue').innerHTML = `<span class="${closingBalanceColor}">₹ ${closingBalance}</span>`;
         }
 
         // Attach the calculateTariff function to the button
