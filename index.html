@@ -117,6 +117,29 @@
         .table-container {
             max-height: 300px;
             overflow-y: auto;
+            position: relative;
+        }
+        .table-container table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table-container thead {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background-color: #e0e0e0;
+        }
+        .table-container th {
+            background-color: #e0e0e0;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .table-container th.sortable {
+            background-color: #e0e0e0;
+        }
+        .table-container th.sortable:hover {
+            background-color: #d0d0d0;
         }
         .reference {
             margin-top: 20px;
@@ -145,6 +168,31 @@
         }
         .green-text {
             color: green;
+        }
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 25px !important;
+            user-select: none;
+        }
+        .sortable::after {
+            content: '↕';
+            position: absolute;
+            right: 8px;
+            color: #666;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .sortable.asc::after {
+            content: '↑';
+            color: #333;
+        }
+        .sortable.desc::after {
+            content: '↓';
+            color: #333;
+        }
+        .sortable:hover {
+            background-color: #e8e8e8;
         }
         @media (max-width: 768px) {
             .col {
@@ -327,11 +375,11 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Sl. No.</th>
-                                <th>Combo Code</th>
-                                <th>Category</th>
-                                <th>Sub Type</th>
-                                <th>% ED</th>
+                                <th class="sortable" data-sort="sl">Sl. No.</th>
+                                <th class="sortable" data-sort="code">Combo Code</th>
+                                <th class="sortable" data-sort="category">Category</th>
+                                <th class="sortable" data-sort="subType">Sub Type</th>
+                                <th class="sortable" data-sort="ed">% ED</th>
                             </tr>
                         </thead>
                         <tbody id="comboTable"></tbody>
@@ -351,9 +399,9 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Category</th>
-                                <th>Slab (kWh)</th>
-                                <th>Rate (paise/kWh)</th>
+                                <th class="sortable" data-sort="category">Category</th>
+                                <th class="sortable" data-sort="slab">Slab (kWh)</th>
+                                <th class="sortable" data-sort="rate">Rate (paise/kWh)</th>
                             </tr>
                         </thead>
                         <tbody id="slabTable"></tbody>
@@ -535,16 +583,36 @@
             const selectedCategory = document.getElementById('filterCategory').value;
             const selectedSubType = document.getElementById('filterSubType').value;
 
-            document.getElementById('comboTable').innerHTML = '';
-            combinationCodes.filter(code => {
-                const matchesSearch = !searchText || code.category.toLowerCase().includes(searchText) || 
-                                    code.subType.toLowerCase().includes(searchText);
-                const matchesComboCode = !selectedComboCode || code.code.toString() === selectedComboCode;
-                const matchesCategory = !selectedCategory || code.category === selectedCategory;
-                const matchesSubType = !selectedSubType || code.subType === selectedSubType;
+            let filteredCodes = combinationCodes;
+            
+            // Only apply filters if any filter is active
+            if (searchText || selectedComboCode || selectedCategory || selectedSubType) {
+                filteredCodes = combinationCodes.filter(code => {
+                    const matchesSearch = code.category.toLowerCase().includes(searchText) || 
+                                        code.subType.toLowerCase().includes(searchText);
+                    const matchesComboCode = !selectedComboCode || code.code.toString() === selectedComboCode;
+                    const matchesCategory = !selectedCategory || code.category === selectedCategory;
+                    const matchesSubType = !selectedSubType || code.subType === selectedSubType;
 
-                return matchesSearch && matchesComboCode && matchesCategory && matchesSubType;
-            }).forEach(code => {
+                    return matchesSearch && matchesComboCode && matchesCategory && matchesSubType;
+                });
+            }
+
+            // Apply sorting if active
+            const activeSort = document.querySelector('th.sortable.active');
+            if (activeSort) {
+                const sortField = activeSort.dataset.sort;
+                const sortDirection = activeSort.classList.contains('asc') ? 1 : -1;
+                filteredCodes.sort((a, b) => {
+                    if (sortField === 'ed') {
+                        return (a[sortField] - b[sortField]) * sortDirection;
+                    }
+                    return String(a[sortField]).localeCompare(String(b[sortField])) * sortDirection;
+                });
+            }
+
+            document.getElementById('comboTable').innerHTML = '';
+            filteredCodes.forEach(code => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${code.sl}</td>
@@ -557,14 +625,34 @@
             });
         }
 
+        // Add sorting functionality
+        document.querySelectorAll('th.sortable').forEach(header => {
+            header.addEventListener('click', () => {
+                // Remove active class from all headers
+                document.querySelectorAll('th.sortable').forEach(h => {
+                    h.classList.remove('active', 'asc', 'desc');
+                });
+
+                // Add active class and toggle sort direction
+                header.classList.add('active');
+                if (header.classList.contains('asc')) {
+                    header.classList.remove('asc');
+                    header.classList.add('desc');
+                } else {
+                    header.classList.remove('desc');
+                    header.classList.add('asc');
+                }
+
+                // Reapply filters and sorting
+                filterAndDisplayCombinationCodes();
+            });
+        });
+
         // Add event listeners for all filters
         document.getElementById('searchCombo').addEventListener('input', filterAndDisplayCombinationCodes);
         document.getElementById('filterComboCode').addEventListener('change', filterAndDisplayCombinationCodes);
         document.getElementById('filterCategory').addEventListener('change', filterAndDisplayCombinationCodes);
         document.getElementById('filterSubType').addEventListener('change', filterAndDisplayCombinationCodes);
-
-        // Initial display of all combination codes
-        filterAndDisplayCombinationCodes();
 
         // Clear Filters Functionality
         document.getElementById('clearComboFilters').addEventListener('click', function() {
@@ -595,12 +683,32 @@
             const searchText = document.getElementById('searchSlab').value.toLowerCase();
             const selectedCategory = document.getElementById('filterSlabCategory').value;
 
+            let filteredSlabs = slabRates;
+            
+            // Only apply filters if any filter is active
+            if (searchText || selectedCategory) {
+                filteredSlabs = slabRates.filter(slab => {
+                    const matchesSearch = slab.category.toLowerCase().includes(searchText);
+                    const matchesCategory = !selectedCategory || slab.category === selectedCategory;
+                    return matchesSearch && matchesCategory;
+                });
+            }
+
+            // Apply sorting if active
+            const activeSort = document.querySelector('#slabTable').closest('.table-container').querySelector('th.sortable.active');
+            if (activeSort) {
+                const sortField = activeSort.dataset.sort;
+                const sortDirection = activeSort.classList.contains('asc') ? 1 : -1;
+                filteredSlabs.sort((a, b) => {
+                    if (sortField === 'rate') {
+                        return (a[sortField] - b[sortField]) * sortDirection;
+                    }
+                    return String(a[sortField]).localeCompare(String(b[sortField])) * sortDirection;
+                });
+            }
+
             document.getElementById('slabTable').innerHTML = '';
-            slabRates.filter(slab => {
-                const matchesSearch = slab.category.toLowerCase().includes(searchText);
-                const matchesCategory = !selectedCategory || slab.category === selectedCategory;
-                return matchesSearch && matchesCategory;
-            }).forEach(slab => {
+            filteredSlabs.forEach(slab => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${slab.category}</td>
@@ -611,19 +719,44 @@
             });
         }
 
-        // Add event listeners for slab filters
-        document.getElementById('searchSlab').addEventListener('input', filterAndDisplaySlabRates);
-        document.getElementById('filterSlabCategory').addEventListener('change', filterAndDisplaySlabRates);
+        // Add sorting functionality to both tables
+        function initializeSorting() {
+            document.querySelectorAll('th.sortable').forEach(header => {
+                header.addEventListener('click', () => {
+                    // Get the table container for this header
+                    const tableContainer = header.closest('.table-container');
+                    
+                    // Remove active class from all headers in this table
+                    tableContainer.querySelectorAll('th.sortable').forEach(h => {
+                        h.classList.remove('active', 'asc', 'desc');
+                    });
 
-        // Clear Filters Functionality
-        document.getElementById('clearSlabFilters').addEventListener('click', function() {
-            document.getElementById('searchSlab').value = '';
-            document.getElementById('filterSlabCategory').value = '';
+                    // Add active class and toggle sort direction
+                    header.classList.add('active');
+                    if (header.classList.contains('asc')) {
+                        header.classList.remove('asc');
+                        header.classList.add('desc');
+                    } else {
+                        header.classList.remove('desc');
+                        header.classList.add('asc');
+                    }
+
+                    // Reapply filters and sorting based on which table was clicked
+                    if (tableContainer.querySelector('#comboTable')) {
+                        filterAndDisplayCombinationCodes();
+                    } else {
+                        filterAndDisplaySlabRates();
+                    }
+                });
+            });
+        }
+
+        // Initialize sorting when the page loads
+        window.addEventListener('load', function() {
+            initializeSorting();
+            filterAndDisplayCombinationCodes();
             filterAndDisplaySlabRates();
         });
-
-        // Initial display of slab rates
-        filterAndDisplaySlabRates();
 
         // Autofill Logic on Combination Code Change
         document.getElementById('comboCode').addEventListener('change', function() {
