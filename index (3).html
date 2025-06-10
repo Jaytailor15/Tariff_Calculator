@@ -1,0 +1,985 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UGVCL Tariff Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        h2 {
+            font-size: 18px;
+            color: #444;
+            margin-bottom: 15px;
+        }
+        h3 {
+            font-size: 16px;
+            color: #444;
+            margin-bottom: 10px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .col {
+            flex: 1;
+            min-width: 300px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        label {
+            font-size: 14px;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px;
+            background-color: #555;
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #666;
+        }
+        .results table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .results th, .results td {
+            padding: 8px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+        .results th {
+            background-color: #e0e0e0;
+            color: #444;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 8px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+        th {
+            background-color: #e0e0e0;
+            color: #444;
+            font-size: 12px;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .table-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .reference {
+            margin-top: 20px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 15px;
+        }
+        .reference div {
+            margin-bottom: 20px;
+        }
+        #slabDetails {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .error {
+            color: #d32f2f;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .error ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        @media (max-width: 768px) {
+            .col {
+                flex: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>UGVCL Prepaid Tariff Calculator</h1>
+        <div class="row">
+            <!-- Input Form -->
+            <div class="col">
+                <h2>Input Details</h2>
+                <form id="tariffForm">
+                    <div>
+                        <label>Consumer Category (Combination Code)</label>
+                        <select id="comboCode"></select>
+                    </div>
+                    <div>
+                        <label>Contract Demand (kW or HP)</label>
+                        <input type="number" id="contractDemand" step="0.01" min="0" placeholder="Enter kW or HP">
+                    </div>
+                    <div>
+                        <label>Daily Energy Consumption (kWh)</label>
+                        <input type="number" id="energyConsumption" step="0.01" min="0" placeholder="Enter kWh">
+                    </div>
+                    <div>
+                        <label>Reactive Energy (kVArh, for LTMD only)</label>
+                        <input type="number" id="reactiveEnergy" step="0.01" min="0" placeholder="Enter kVArh">
+                    </div>
+                    <div>
+                        <label>FPPPA Rate (₹/kWh)</label>
+                        <input type="number" id="fpppaRate" step="0.01" min="0" value="2.65" placeholder="Enter ₹/kWh">
+                    </div>
+                    <div>
+                        <label>Installation Date</label>
+                        <input type="date" id="installDate">
+                    </div>
+                    <div>
+                        <label>Month</label>
+                        <select id="month">
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Opening Wallet Balance (₹)</label>
+                        <input type="number" id="openingBalance" step="0.01" min="0" value="0" placeholder="Enter ₹">
+                    </div>
+                    <div>
+                        <label>Credit Purchased (₹)</label>
+                        <input type="number" id="creditPurchased" step="100" min="0" value="0" placeholder="Enter ₹ (multiples of 100)">
+                    </div>
+                    <div>
+                        <label>FOA Charge (₹)</label>
+                        <input type="number" id="foaCharge" step="0.01" value="0" placeholder="Enter ₹">
+                    </div>
+                    <div>
+                        <label>Credit by Utility (₹)</label>
+                        <input type="number" id="creditByUtility" step="0.01" min="0" value="0" placeholder="Enter ₹">
+                    </div>
+                    <div>
+                        <label>Debit by Utility (₹)</label>
+                        <input type="number" id="debitByUtility" step="0.01" min="0" value="0" placeholder="Enter ₹">
+                    </div>
+                    <div>
+                        <label>Month-end Reconciliation (₹)</label>
+                        <input type="number" id="monthEndReconciliation" step="0.01" value="0" placeholder="Enter ₹">
+                    </div>
+                    <div>
+                        <label>Provisional Adjustments (₹)</label>
+                        <input type="number" id="provisionalAdjustments" step="0.01" value="0" placeholder="Enter ₹">
+                    </div>
+                    <button type="button" id="calculateButton">Calculate Tariff</button>
+                    <div id="errorMessages" class="error"></div>
+                </form>
+            </div>
+            <!-- Results Section -->
+            <div class="col">
+                <h2>Calculation Results</h2>
+                <div id="results" class="results">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Bill Factor</td><td id="billFactor">0.0000</td></tr>
+                            <tr><td>Fixed Charge (B)</td><td id="fixedCharge">₹ 0.00</td></tr>
+                            <tr><td>Demand Violation Charge (C)</td><td id="demandViolation">₹ 0.00</td></tr>
+                            <tr><td>Basic Energy Charge (D)</td><td id="energyCharge">₹ 0.00</td></tr>
+                            <tr><td>FPPPA Charge (E)</td><td id="fpppaCharge">₹ 0.00</td></tr>
+                            <tr><td>Reactive Energy Charge (F)</td><td id="reactiveCharge">₹ 0.00</td></tr>
+                            <tr><td>Electricity Duty (G)</td><td id="electricityDuty">₹ 0.00</td></tr>
+                            <tr><td>Basic Electricity Charge (H)</td><td id="basicElectricityCharge">₹ 0.00</td></tr>
+                            <tr><td>FOA Charge (I)</td><td id="foaChargeResult">₹ 0.00</td></tr>
+                            <tr><td>Credit by Utility (J)</td><td id="creditByUtilityResult">₹ 0.00</td></tr>
+                            <tr><td>Debit by Utility (K)</td><td id="debitByUtilityResult">₹ 0.00</td></tr>
+                            <tr><td>Month-end Reconciliation (M)</td><td id="monthEndReconciliationResult">₹ 0.00</td></tr>
+                            <tr><td>Provisional Adjustments (N)</td><td id="provisionalAdjustmentsResult">₹ 0.00</td></tr>
+                            <tr><td>Closing Wallet Balance (O)</td><td id="closingBalance">₹ 0.00</td></tr>
+                            <tr><td>Slab Details</td><td id="slabDetails">-</td></tr>
+                        </tbody>
+                    </table>
+                    <h3>Calculation Formulas</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Formula</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Bill Factor</td><td id="billFactorFormula">-</td><td id="billFactorValue">0.0000</td></tr>
+                            <tr><td>Fixed Charge (B)</td><td id="fixedChargeFormula">-</td><td id="fixedChargeValue">₹ 0.00</td></tr>
+                            <tr><td>Demand Violation Charge (C)</td><td id="demandViolationFormula">-</td><td id="demandViolationValue">₹ 0.00</td></tr>
+                            <tr><td>Basic Energy Charge (D)</td><td id="energyChargeFormula">-</td><td id="energyChargeValue">₹ 0.00</td></tr>
+                            <tr><td>FPPPA Charge (E)</td><td id="fpppaChargeFormula">-</td><td id="fpppaChargeValue">₹ 0.00</td></tr>
+                            <tr><td>Reactive Energy Charge (F)</td><td id="reactiveChargeFormula">-</td><td id="reactiveChargeValue">₹ 0.00</td></tr>
+                            <tr><td>Electricity Duty (G)</td><td id="electricityDutyFormula">-</td><td id="electricityDutyValue">₹ 0.00</td></tr>
+                            <tr><td>Basic Electricity Charge (H)</td><td id="basicElectricityChargeFormula">-</td><td id="basicElectricityChargeValue">₹ 0.00</td></tr>
+                            <tr><td>FOA Charge (I)</td><td id="foaChargeFormula">-</td><td id="foaChargeValue">₹ 0.00</td></tr>
+                            <tr><td>Credit by Utility (J)</td><td id="creditByUtilityFormula">-</td><td id="creditByUtilityValue">₹ 0.00</td></tr>
+                            <tr><td>Debit by Utility (K)</td><td id="debitByUtilityFormula">-</td><td id="debitByUtilityValue">₹ 0.00</td></tr>
+                            <tr><td>Month-end Reconciliation (M)</td><td id="monthEndReconciliationFormula">-</td><td id="monthEndReconciliationValue">₹ 0.00</td></tr>
+                            <tr><td>Provisional Adjustments (N)</td><td id="provisionalAdjustmentsFormula">-</td><td id="provisionalAdjustmentsValue">₹ 0.00</td></tr>
+                            <tr><td>Closing Wallet Balance (O)</td><td id="closingBalanceFormula">-</td><td id="closingBalanceValue">₹ 0.00</td></tr>
+                            <tr><td>Slab Details</td><td id="slabDetailsFormula">-</td><td id="slabDetailsValue">-</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Reference Section -->
+        <div class="reference">
+            <h2>Reference Tables</h2>
+            <div>
+                <h3>Combination Codes</h3>
+                <input type="text" id="searchCombo" placeholder="Search by Category or Sub Type" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Sl. No.</th>
+                                <th>Combo Code</th>
+                                <th>Category</th>
+                                <th>Sub Type</th>
+                                <th>% ED</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comboTable"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <h3>Energy Slab Rates</h3>
+                <input type="text" id="searchSlab" placeholder="Search by Category" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Slab (kWh)</th>
+                                <th>Rate (paise/kWh)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slabTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Combination Codes Data
+        const combinationCodes = [
+            { sl: 1, code: 90, category: 'RGPR', subType: 'Residential Rural Area', ed: 7.5 },
+            { sl: 2, code: 91, category: 'RGPR', subType: 'Resi.Rur.Duty Free-Upto 250', ed: 0.0 },
+            { sl: 3, code: 95, category: 'RGPR', subType: 'Hostel-Rural Area', ed: 7.5 },
+            { sl: 4, code: 98, category: 'RGPR', subType: 'Residential Rural Area', ed: 15.0 },
+            { sl: 5, code: 1, category: 'RGPU', subType: 'Residential Rural Area', ed: 7.5 },
+            { sl: 6, code: 2, category: 'RGPU', subType: 'Resi.Rur.Duty Free-Upto 250', ed: 0.0 },
+            { sl: 7, code: 3, category: 'RGPU', subType: 'Residential Urban Area', ed: 15.0 },
+            { sl: 8, code: 4, category: 'RGPU', subType: 'Hostel-Urban Area', ed: 11.3 },
+            { sl: 9, code: 68, category: 'RGPU', subType: 'Educational Inst. Rural', ed: 7.5 },
+            { sl: 10, code: 92, category: 'RGPU', subType: 'Hostel-Urban Area', ed: 11.3 },
+            { sl: 11, code: 5, category: 'NRGP', subType: 'Services', ed: 20.0 },
+            { sl: 12, code: 6, category: 'NRGP', subType: 'Manufacturing Foods', ed: 10.0 },
+            { sl: 13, code: 7, category: 'NRGP', subType: 'Hotels/Restaurants', ed: 20.0 },
+            { sl: 14, code: 8, category: 'NRGP', subType: 'Others', ed: 20.0 },
+            { sl: 15, code: 9, category: 'NRGP', subType: 'Cold Storage-lighting', ed: 20.0 },
+            { sl: 16, code: 10, category: 'NRGP', subType: 'State Government Offices', ed: 0.0 },
+            { sl: 17, code: 11, category: 'NRGP', subType: 'Central Government Offices', ed: 0.0 },
+            { sl: 18, code: 13, category: 'NRGP', subType: 'Hospital/Disp. NonProfiting', ed: 0.0 },
+            { sl: 19, code: 48, category: 'NRGP', subType: 'Cinema', ed: 20.0 },
+            { sl: 20, code: 74, category: 'NRGP', subType: 'Cold Storage-MP', ed: 10.0 },
+            { sl: 21, code: 87, category: 'NRGP', subType: 'Service Industries', ed: 20.0 },
+            { sl: 22, code: 93, category: 'NRGP', subType: 'Exempted - New Industries', ed: 0.0 },
+            { sl: 23, code: 94, category: 'NRGP', subType: 'Exempted - Section 3 of 3', ed: 0.0 },
+            { sl: 24, code: 105, category: 'NRGP', subType: 'Religious Consumers', ed: 20.0 },
+            { sl: 25, code: 109, category: 'NRGP', subType: 'Manufacturing Unit', ed: 10.0 },
+            { sl: 26, code: 112, category: 'NRGP', subType: 'Private Hostel-Urban', ed: 11.3 },
+            { sl: 27, code: 113, category: 'NRGP', subType: 'Private Educational Institute-Urban', ed: 15.0 },
+            { sl: 28, code: 116, category: 'NRGP', subType: 'Private Hostel-Rural', ed: 7.5 },
+            { sl: 29, code: 117, category: 'NRGP', subType: 'Private Educational Institute-Rural', ed: 7.5 },
+            { sl: 30, code: 133, category: 'NRGP', subType: 'Chilling Plant', ed: 15.0 },
+            { sl: 31, code: 134, category: 'NRGP', subType: 'Hospital/Disp. Having 10 or more beds', ed: 15.0 },
+            { sl: 32, code: 136, category: 'NRGP', subType: 'Hotels & restaurant having Licence/Documents', ed: 10.0 },
+            { sl: 33, code: 148, category: 'NRGP', subType: 'Religious Praying Places Rural Area', ed: 7.5 },
+            { sl: 34, code: 150, category: 'NRGP', subType: 'Religious Praying Places Urban Area', ed: 15.0 },
+            { sl: 35, code: 152, category: 'NRGP', subType: 'Caravanserai (Dharmshala)', ed: 10.0 },
+            { sl: 36, code: 157, category: 'NRGP', subType: 'Solar Plant Construction & Maintenance', ed: 0.0 },
+            { sl: 37, code: 17, category: 'LTMD', subType: 'Service Industries', ed: 20.0 },
+            { sl: 38, code: 18, category: 'LTMD', subType: 'Manufacturing Units', ed: 10.0 },
+            { sl: 39, code: 20, category: 'LTMD', subType: 'State Government Offices', ed: 0.0 },
+            { sl: 40, code: 21, category: 'LTMD', subType: 'Central Government Offices', ed: 0.0 },
+            { sl: 41, code: 22, category: 'LTMD', subType: 'Services-Other Then Motive', ed: 20.0 },
+            { sl: 42, code: 23, category: 'LTMD', subType: 'Exempted - New Industries', ed: 0.0 },
+            { sl: 43, code: 24, category: 'LTMD', subType: 'Exempted - Section 3 of 3', ed: 0.0 },
+            { sl: 44, code: 25, category: 'LTMD', subType: 'Hotels/Restaurants', ed: 20.0 },
+            { sl: 45, code: 26, category: 'LTMD', subType: 'Manufacturing Foods', ed: 10.0 },
+            { sl: 46, code: 27, category: 'LTMD', subType: 'Cold Storage-MP', ed: 10.0 },
+            { sl: 47, code: 88, category: 'LTMD', subType: 'Hospital/Disp. NonProfiting', ed: 0.0 },
+            { sl: 48, code: 96, category: 'LTMD', subType: 'Cinema', ed: 20.0 },
+            { sl: 49, code: 97, category: 'LTMD', subType: 'Cold Storage-lighting', ed: 20.0 },
+            { sl: 50, code: 110, category: 'LTMD', subType: 'Private Hostel-Urban', ed: 11.3 },
+            { sl: 51, code: 111, category: 'LTMD', subType: 'Private Educational Institute-Urban', ed: 15.0 },
+            { sl: 52, code: 114, category: 'LTMD', subType: 'Private Hostel-Rural', ed: 7.5 },
+            { sl: 53, code: 115, category: 'LTMD', subType: 'Private Educational Institute-Rural', ed: 7.5 },
+            { sl: 54, code: 129, category: 'LTMD', subType: 'Others', ed: 20.0 },
+            { sl: 55, code: 130, category: 'LTMD', subType: 'Religious Consumers', ed: 20.0 },
+            { sl: 56, code: 132, category: 'LTMD', subType: 'Chilling Plant', ed: 15.0 },
+            { sl: 57, code: 135, category: 'LTMD', subType: 'Hospital/Disp. Having 10 or more beds', ed: 15.0 },
+            { sl: 58, code: 137, category: 'LTMD', subType: 'Hotels & restaurant having Licence/Documents', ed: 10.0 },
+            { sl: 59, code: 147, category: 'LTMD', subType: 'Religious Praying Places Rural Area', ed: 7.5 },
+            { sl: 60, code: 149, category: 'LTMD', subType: 'Religious Praying Places Urban Area', ed: 15.0 },
+            { sl: 61, code: 151, category: 'LTMD', subType: 'Caravanserai (Dharmshala)', ed: 10.0 },
+            { sl: 62, code: 38, category: 'WW.MU', subType: 'Municipal/Local Authority', ed: 0.0 },
+            { sl: 63, code: 107, category: 'WW.MU', subType: 'Municipal Water Works-Services(GWSSB)', ed: 0.0 },
+            { sl: 64, code: 36, category: 'WW.GP', subType: 'Municipal/Local Authority', ed: 0.0 },
+            { sl: 65, code: 108, category: 'WW.GP', subType: 'GramPanchyat Water Works-Services(GWSSB)', ed: 0.0 },
+            { sl: 66, code: 40, category: 'WW.PR', subType: 'State Government Offices', ed: 0.0 },
+            { sl: 67, code: 41, category: 'WW.PR', subType: 'Central Government Offices', ed: 0.0 },
+            { sl: 68, code: 42, category: 'WW.PR', subType: 'Others', ed: 20.0 },
+            { sl: 69, code: 43, category: 'WW.PR', subType: 'Residential Urban Area', ed: 15.0 },
+            { sl: 70, code: 44, category: 'WW.PR', subType: 'Residential Rural Area', ed: 7.5 },
+            { sl: 71, code: 131, category: 'WW.PR', subType: 'Water Works-Hostel-Urban', ed: 11.3 },
+            { sl: 72, code: 156, category: 'WW.PR', subType: 'GIDC Industrial Estate', ed: 10.0 },
+            { sl: 73, code: 37, category: 'WW.NP', subType: 'Municipal/Local Authority', ed: 0.0 },
+            { sl: 74, code: 144, category: 'GLP.SL', subType: 'SL Local Authority area', ed: 0.0 },
+            { sl: 75, code: 30, category: 'GLP', subType: 'Research Institute State Govt', ed: 0.0 },
+            { sl: 76, code: 31, category: 'GLP', subType: 'Educational Insti.Urban', ed: 15.0 },
+            { sl: 77, code: 45, category: 'GLP', subType: 'Central Government Research Insti', ed: 0.0 },
+            { sl: 78, code: 52, category: 'GLP', subType: 'Educational Research Institue(Rural)', ed: 7.5 },
+            { sl: 79, code: 60, category: 'GLP', subType: 'Hostel-Rural Area', ed: 7.5 },
+            { sl: 80, code: 61, category: 'GLP', subType: 'Hostel-Urban Area', ed: 11.3 },
+            { sl: 81, code: 64, category: 'GLP', subType: 'Residential Urban Area', ed: 15.0 },
+            { sl: 82, code: 67, category: 'GLP', subType: 'Hospital/Disp. NonProfiting', ed: 0.0 },
+            { sl: 83, code: 103, category: 'GLP', subType: 'Old-Age House', ed: 0.0 },
+            { sl: 84, code: 104, category: 'GLP', subType: 'Religious Consumers(trust)', ed: 20.0 },
+            { sl: 85, code: 106, category: 'GLP', subType: 'Panjarapole', ed: 5.0 },
+            { sl: 86, code: 142, category: 'GLP', subType: 'Trust Hospital with Specific ED rate By EDC-EPD', ed: 15.0 },
+            { sl: 87, code: 153, category: 'GLP', subType: 'Caravanserai (Dharmshala)', ed: 10.0 },
+            { sl: 88, code: 154, category: 'GLP', subType: 'Religious Praying Places Rural Area', ed: 7.5 },
+            { sl: 89, code: 155, category: 'GLP', subType: 'Religious Praying Places Urban Area', ed: 15.0 },
+            { sl: 90, code: 145, category: 'GLP.SP', subType: 'SL Private Residential Area Urban', ed: 15.0 },
+            { sl: 91, code: 146, category: 'GLP.SP', subType: 'SL Private Residential Rural Urban', ed: 7.5 },
+            { sl: 92, code: 143, category: 'EVCS', subType: 'Electric Vehicle Charging Station', ed: 20.0 },
+        ];
+
+        // Energy Slab Rates
+        const slabRates = [
+            { category: 'RGPR', slab: '0-50', rate: 265 }, // NON BP rate for RGPR
+            { category: 'RGPR', slab: '51-100', rate: 310 },
+            { category: 'RGPR', slab: '101-250', rate: 375 },
+            { category: 'RGPR', slab: '>250', rate: 490 },
+            { category: 'RGPR-BPL', slab: '0-50', rate: 150 }, // BP rate for RGPR
+            { category: 'RGPR-BPL', slab: '51-100', rate: 310 },
+            { category: 'RGPR-BPL', slab: '101-250', rate: 375 },
+            { category: 'RGPR-BPL', slab: '>250', rate: 490 },
+            { category: 'RGPU', slab: '0-50', rate: 305 }, // NON BP rate for RGPU
+            { category: 'RGPU', slab: '51-100', rate: 350 },
+            { category: 'RGPU', slab: '101-250', rate: 415 },
+            { category: 'RGPU', slab: '>250', rate: 520 },
+            { category: 'RGPU-BPL', slab: '0-50', rate: 150 }, // BP rate for RGPU
+            { category: 'RGPU-BPL', slab: '51-100', rate: 350 },
+            { category: 'RGPU-BPL', slab: '101-250', rate: 415 },
+            { category: 'RGPU-BPL', slab: '>250', rate: 520 },
+            { category: 'NRGP', slab: '0-any (≤10 kW)', rate: 435 },
+            { category: 'NRGP', slab: '>10 kW', rate: 465 },
+            { category: 'LTMD', slab: '0-any', rate: 460 },
+            { category: 'GLP', slab: '0-any', rate: 390 },
+            { category: 'GLP.SL', slab: '0-any', rate: 390 },
+            { category: 'GLP.SP', slab: '0-any', rate: 390 },
+            { category: 'EVCS', slab: '0-any', rate: 310 },
+            { category: 'WW.MU', slab: '0-any', rate: 410 },
+            { category: 'WW.GP', slab: '0-any', rate: 320 },
+            { category: 'WW.NP', slab: '0-any', rate: 320 },
+            { category: 'WW.PR', slab: '0-any', rate: 430 },
+        ];
+
+        // Populate Combination Codes Dropdown and Table
+        const comboSelect = document.getElementById('comboCode');
+        combinationCodes.forEach(code => {
+            const option = document.createElement('option');
+            option.value = code.code;
+            option.textContent = `${code.code} - ${code.category} (${code.subType})`;
+            comboSelect.appendChild(option);
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${code.sl}</td>
+                <td>${code.code}</td>
+                <td>${code.category}</td>
+                <td>${code.subType}</td>
+                <td>${code.ed}%</td>
+            `;
+            document.getElementById('comboTable').appendChild(row);
+        });
+
+        // Populate Slab Rates Table
+        const slabTableBody = document.getElementById('slabTable');
+        slabRates.forEach(slab => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${slab.category}</td>
+                <td>${slab.slab}</td>
+                <td>${slab.rate}</td>
+            `;
+            slabTableBody.appendChild(row);
+        });
+
+        // Search Functionality for Combination Codes
+        document.getElementById('searchCombo').addEventListener('input', function(e) {
+            const search = e.target.value.toLowerCase();
+            document.getElementById('comboTable').innerHTML = '';
+            combinationCodes.filter(code => 
+                code.category.toLowerCase().includes(search) || 
+                code.subType.toLowerCase().includes(search)
+            ).forEach(code => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${code.sl}</td>
+                    <td>${code.code}</td>
+                    <td>${code.category}</td>
+                    <td>${code.subType}</td>
+                    <td>${code.ed}%</td>
+                `;
+                document.getElementById('comboTable').appendChild(row);
+            });
+        });
+
+        // Search Functionality for Slab Rates
+        document.getElementById('searchSlab').addEventListener('input', function(e) {
+            const search = e.target.value.toLowerCase();
+            document.getElementById('slabTable').innerHTML = '';
+            slabRates.filter(slab => 
+                slab.category.toLowerCase().includes(search)
+            ).forEach(slab => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${slab.category}</td>
+                    <td>${slab.slab}</td>
+                    <td>${slab.rate}</td>
+                `;
+                document.getElementById('slabTable').appendChild(row);
+            });
+        });
+
+        // Autofill Logic on Combination Code Change
+        document.getElementById('comboCode').addEventListener('change', function() {
+            const selectedCode = parseInt(this.value);
+            const consumer = combinationCodes.find(c => c.code === selectedCode);
+            if (consumer) {
+                // Autofill Reactive Energy: Set to 0 unless category is LTMD
+                const reactiveEnergyInput = document.getElementById('reactiveEnergy');
+                if (consumer.category !== 'LTMD') {
+                    reactiveEnergyInput.value = '0';
+                    reactiveEnergyInput.disabled = true;
+                } else {
+                    reactiveEnergyInput.disabled = false;
+                }
+            }
+        });
+
+        // Tariff Calculation Logic with Validation
+        function calculateTariff() {
+            // Clear previous error messages
+            const errorMessages = document.getElementById('errorMessages');
+            errorMessages.innerHTML = '';
+
+            // Get form values (use entered values)
+            const comboCode = document.getElementById('comboCode').value;
+            const contractDemand = document.getElementById('contractDemand').value;
+            const energyConsumption = document.getElementById('energyConsumption').value;
+            const reactiveEnergy = document.getElementById('reactiveEnergy').value;
+            const fpppaRate = document.getElementById('fpppaRate').value;
+            const installDate = document.getElementById('installDate').value;
+            const month = document.getElementById('month').value;
+            const openingBalance = document.getElementById('openingBalance').value;
+            const creditPurchased = document.getElementById('creditPurchased').value;
+            const foaCharge = document.getElementById('foaCharge').value || '0';
+            const creditByUtility = document.getElementById('creditByUtility').value || '0';
+            const debitByUtility = document.getElementById('debitByUtility').value || '0';
+            const monthEndReconciliation = document.getElementById('monthEndReconciliation').value || '0';
+            const provisionalAdjustments = document.getElementById('provisionalAdjustments').value || '0';
+
+            // Validation
+            const errors = [];
+
+            // Required fields
+            if (!comboCode) {
+                errors.push('Consumer Category (Combination Code) is required.');
+            }
+            if (!contractDemand) {
+                errors.push('Contract Demand is required.');
+            } else if (parseFloat(contractDemand) < 0) {
+                errors.push('Contract Demand must be a positive number.');
+            }
+            if (!energyConsumption) {
+                errors.push('Daily Energy Consumption is required.');
+            } else if (parseFloat(energyConsumption) < 0) {
+                errors.push('Daily Energy Consumption must be a positive number.');
+            }
+            if (reactiveEnergy && parseFloat(reactiveEnergy) < 0) {
+                errors.push('Reactive Energy must be a positive number.');
+            }
+            if (!fpppaRate) {
+                errors.push('FPPPA Rate is required.');
+            } else if (parseFloat(fpppaRate) < 0) {
+                errors.push('FPPPA Rate must be a positive number.');
+            }
+            if (!installDate) {
+                errors.push('Installation Date is required.');
+            }
+            if (!month) {
+                errors.push('Month is required.');
+            }
+            if (openingBalance === '') {
+                errors.push('Opening Wallet Balance is required.');
+            } else if (parseFloat(openingBalance) < 0) {
+                errors.push('Opening Wallet Balance must be a positive number.');
+            }
+            if (creditPurchased === '') {
+                errors.push('Credit Purchased is required.');
+            } else if (parseFloat(creditPurchased) < 0) {
+                errors.push('Credit Purchased must be a positive number.');
+            } else if (parseFloat(creditPurchased) % 100 !== 0) {
+                errors.push('Credit Purchased must be in multiples of 100.');
+            }
+            if (creditByUtility && parseFloat(creditByUtility) < 0) {
+                errors.push('Credit by Utility must be a positive number.');
+            }
+            if (debitByUtility && parseFloat(debitByUtility) < 0) {
+                errors.push('Debit by Utility must be a positive number.');
+            }
+
+            // If there are errors, display them and stop
+            if (errors.length > 0) {
+                errorMessages.innerHTML = '<ul>' + errors.map(error => `<li>${error}</li>`).join('') + '</ul>';
+                return;
+            }
+
+            // Parse entered values
+            const parsedComboCode = parseInt(comboCode);
+            const parsedContractDemand = parseFloat(contractDemand) || 0;
+            const parsedEnergyConsumption = parseFloat(energyConsumption) || 0;
+            const parsedReactiveEnergy = parseFloat(reactiveEnergy) || 0;
+            const parsedFpppaRate = parseFloat(fpppaRate) || 0;
+            const parsedInstallDate = new Date(installDate);
+            const parsedMonth = parseInt(month);
+            const parsedOpeningBalance = parseFloat(openingBalance) || 0;
+            const parsedCreditPurchased = parseFloat(creditPurchased) || 0;
+            const parsedFoaCharge = parseFloat(foaCharge) || 0;
+            const parsedCreditByUtility = parseFloat(creditByUtility) || 0;
+            const parsedDebitByUtility = parseFloat(debitByUtility) || 0;
+            const parsedMonthEndReconciliation = parseFloat(monthEndReconciliation) || 0;
+            const parsedProvisionalAdjustments = parseFloat(provisionalAdjustments) || 0;
+
+            // Calculate Days in Month
+            const year = new Date().getFullYear();
+            const daysInMonth = new Date(year, parsedMonth, 0).getDate();
+
+            // Bill Factor
+            let billFactor = 1.0000;
+            let billFactorFormula = '1.0000';
+            if (parsedInstallDate && !isNaN(parsedInstallDate)) {
+                const installDay = parsedInstallDate.getDate();
+                if (parsedInstallDate.getMonth() + 1 === parsedMonth) {
+                    billFactor = ((daysInMonth - installDay + 1) / daysInMonth);
+                    billFactorFormula = `(${daysInMonth} - ${installDay} + 1) / ${daysInMonth}`;
+                }
+            }
+            billFactor = billFactor.toFixed(4);
+            document.getElementById('billFactor').textContent = billFactor;
+            document.getElementById('billFactorFormula').textContent = billFactorFormula;
+            document.getElementById('billFactorValue').textContent = billFactor;
+
+            // Find Consumer Details
+            const consumer = combinationCodes.find(c => c.code === parsedComboCode);
+            const category = consumer.category;
+
+            // Fixed Charge (B)
+            let fixedCharge = 0;
+            let fixedChargeFormula = '';
+            if (['RGPR', 'RGPU'].includes(category)) {
+                if (parsedComboCode === 91 || parsedComboCode === 2) {
+                    fixedCharge = 5.00;
+                    fixedChargeFormula = `5.00 * ${billFactor} / ${daysInMonth}`;
+                } else {
+                    if (parsedContractDemand <= 2) {
+                        fixedCharge = 15.00;
+                        fixedChargeFormula = `15.00 * ${billFactor} / ${daysInMonth}`;
+                    }
+                    else if (parsedContractDemand <= 4) {
+                        fixedCharge = 25.00;
+                        fixedChargeFormula = `25.00 * ${billFactor} / ${daysInMonth}`;
+                    }
+                    else if (parsedContractDemand <= 6) {
+                        fixedCharge = 25.00;
+                        fixedChargeFormula = `45.00 * ${billFactor} / ${daysInMonth}`;
+                    }
+                    else {
+                        fixedCharge = 70.00;
+                        fixedChargeFormula = `70.00 * ${billFactor} / ${daysInMonth}`;
+                    }
+                }
+            } else if (category === 'NRGP') {
+                if (parsedContractDemand <= 10) {
+                    fixedCharge = parsedContractDemand * 50.00;
+                    fixedChargeFormula = `${parsedContractDemand} * 50.00 * ${billFactor} / ${daysInMonth}`;
+                } else {
+                    fixedCharge = 500 + (parsedContractDemand - 10) * 85.00;
+                    fixedChargeFormula = `(500 + (${parsedContractDemand} - 10) * 85.00) * ${billFactor} / ${daysInMonth}`;
+                }
+            } else if (category === 'LTMD') {
+                if (parsedContractDemand <= 40) {
+                    fixedCharge = parsedContractDemand * 90.00;
+                    fixedChargeFormula = `${parsedContractDemand} * 90.00 * ${billFactor} / ${daysInMonth}`;
+                } else if (parsedContractDemand <= 60) {
+                    fixedCharge = 3600 + (parsedContractDemand - 40) * 130.00;
+                    fixedChargeFormula = `(3600 + (${parsedContractDemand} - 40) * 130.00) * ${billFactor} / ${daysInMonth}`;
+                } else {
+                    fixedCharge = 6200 + (parsedContractDemand - 60) * 195.00;
+                    fixedChargeFormula = `(6200 + (${parsedContractDemand} - 60) * 195.00) * ${billFactor} / ${daysInMonth}`;
+                }
+            } else if (category === 'GLP' || category === 'GLP.SL' || category === 'GLP.SP') {
+                fixedCharge = 70.00;
+                fixedChargeFormula = `70.00 * ${billFactor} / ${daysInMonth}`;
+            } else if (category === 'EVCS') {
+                fixedCharge = 25.00;
+                fixedChargeFormula = `25.00 * ${billFactor} / ${daysInMonth}`;
+            } else if (['WW.MU', 'WW.GP', 'WW.NP', 'WW.PR'].includes(category)) {
+                if (['38', '107'].includes(parsedComboCode.toString())) {
+                    fixedCharge = parsedContractDemand * 20.00;
+                    fixedChargeFormula = `${parsedContractDemand} * 20.00 * ${billFactor} / ${daysInMonth}`;
+                } else if (['36', '37', '108'].includes(parsedComboCode.toString())) {
+                    fixedCharge = 0;
+                    fixedChargeFormula = `0 * ${billFactor} / ${daysInMonth}`;
+                } else {
+                    fixedCharge = parsedContractDemand * 25.00;
+                    fixedChargeFormula = `${parsedContractDemand} * 25.00 * ${billFactor} / ${daysInMonth}`;
+                }
+            }
+            fixedCharge = (fixedCharge * billFactor / daysInMonth).toFixed(2);
+            document.getElementById('fixedCharge').textContent = `₹ ${fixedCharge}`;
+            document.getElementById('fixedChargeFormula').textContent = fixedChargeFormula;
+            document.getElementById('fixedChargeValue').textContent = `₹ ${fixedCharge}`;
+
+            // Demand Violation Charge (C)
+            let demandViolation = 0;
+            let demandViolationFormula = '0';
+            if (['RGPR', 'RGPU'].includes(category) && parsedComboCode !== 91 && parsedComboCode !== 2) {
+                let newFixedCharge = 0;
+                let newFixedChargeFormula = '';
+                if (parsedContractDemand <= 2) {
+                    newFixedCharge = 15.00;
+                    newFixedChargeFormula = '15.00';
+                }
+                else if (parsedContractDemand <= 4) {
+                    newFixedCharge = 25.00;
+                    newFixedChargeFormula = '25.00';
+                }
+                else if (parsedContractDemand <= 6) {
+                    newFixedCharge = 45.00;
+                    newFixedChargeFormula = '45.00';
+                }
+                else {
+                    newFixedCharge = 70.00;
+                    newFixedChargeFormula = '70.00';
+                }
+                demandViolation = (newFixedCharge - fixedCharge * daysInMonth) / daysInMonth;
+                demandViolationFormula = `(${newFixedChargeFormula} - ${fixedCharge} * ${daysInMonth}) / ${daysInMonth}`;
+            } else if (category === 'NRGP') {
+                const originalFixed = parsedContractDemand <= 10 ? parsedContractDemand * 50.00 : 500 + (parsedContractDemand - 10) * 85.00;
+                const originalFixedFormula = parsedContractDemand <= 10 ? `${parsedContractDemand} * 50.00` : `500 + (${parsedContractDemand} - 10) * 85.00`;
+                const newFixed = parsedContractDemand * 85.00;
+                const newFixedFormula = `${parsedContractDemand} * 85.00`;
+                demandViolation = (newFixed - originalFixed) / daysInMonth;
+                demandViolationFormula = `(${newFixedFormula} - ${originalFixedFormula}) / ${daysInMonth}`;
+            } else if (category === 'LTMD') {
+                const originalFixed = parsedContractDemand <= 40 ? parsedContractDemand * 90.00 :
+                                     parsedContractDemand <= 60 ? 3600 + (parsedContractDemand - 40) * 130.00 :
+                                     6200 + (parsedContractDemand - 60) * 195.00;
+                const originalFixedFormula = parsedContractDemand <= 40 ? `${parsedContractDemand} * 90.00` :
+                                             parsedContractDemand <= 60 ? `3600 + (${parsedContractDemand} - 40) * 130.00` :
+                                             `6200 + (${parsedContractDemand} - 60) * 195.00`;
+                const newFixed = parsedContractDemand * 265.00;
+                const newFixedFormula = `${parsedContractDemand} * 265.00`;
+                demandViolation = (newFixed - originalFixed) / daysInMonth;
+                demandViolationFormula = `(${newFixedFormula} - ${originalFixedFormula}) / ${daysInMonth}`;
+            }
+            demandViolation = demandViolation > 0 ? demandViolation.toFixed(2) : '0.00';
+            document.getElementById('demandViolation').textContent = `₹ ${demandViolation}`;
+            document.getElementById('demandViolationFormula').textContent = demandViolationFormula;
+            document.getElementById('demandViolationValue').textContent = `₹ ${demandViolation}`;
+
+            // Basic Energy Charge (D) - Using Daily Consumption for Slab Selection
+            let energyCharge = 0;
+            let slabDetails = '';
+            let energyChargeFormula = '';
+            const dailyConsumption = parsedEnergyConsumption; // Use daily consumption directly
+            let effectiveCategory = category;
+
+            // Adjust category for BPL (BP) consumers; NON BP uses standard RGPR/RGPU slabs
+            if (parsedComboCode === 91) effectiveCategory = 'RGPR-BPL'; // BP: RGPR Duty Free up to 250 kWh
+            if (parsedComboCode === 2) effectiveCategory = 'RGPU-BPL';  // BP: RGPU Duty Free up to 250 kWh
+
+            // Filter slabs for the effective category (NON BP or BP)
+            const applicableSlabs = slabRates.filter(slab => slab.category === effectiveCategory);
+
+            if (['RGPR', 'RGPR-BPL', 'RGPU', 'RGPU-BPL'].includes(effectiveCategory)) {
+                if (dailyConsumption <= 50) {
+                    const rate = applicableSlabs.find(slab => slab.slab === '0-50').rate / 100; // Convert paise to ₹
+                    energyCharge = parsedEnergyConsumption * rate;
+                    slabDetails = `Slab: 0-50 kWh, Rate: ${applicableSlabs.find(slab => slab.slab === '0-50').rate} paise/kWh`;
+                    energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+                } else if (dailyConsumption <= 100) {
+                    const rate = applicableSlabs.find(slab => slab.slab === '51-100').rate / 100;
+                    energyCharge = parsedEnergyConsumption * rate;
+                    slabDetails = `Slab: 51-100 kWh, Rate: ${applicableSlabs.find(slab => slab.slab === '51-100').rate} paise/kWh`;
+                    energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+                } else if (dailyConsumption <= 250) {
+                    const rate = applicableSlabs.find(slab => slab.slab === '101-250').rate / 100;
+                    energyCharge = parsedEnergyConsumption * rate;
+                    slabDetails = `Slab: 101-250 kWh, Rate: ${applicableSlabs.find(slab => slab.slab === '101-250').rate} paise/kWh`;
+                    energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+                } else {
+                    const rate = applicableSlabs.find(slab => slab.slab === '>250').rate / 100;
+                    energyCharge = parsedEnergyConsumption * rate;
+                    slabDetails = `Slab: >250 kWh, Rate: ${applicableSlabs.find(slab => slab.slab === '>250').rate} paise/kWh`;
+                    energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+                }
+            } else if (category === 'NRGP') {
+                const slabKey = parsedContractDemand <= 10 ? '0-any (≤10 kW)' : '>10 kW';
+                const rate = applicableSlabs.find(slab => slab.slab === slabKey).rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === slabKey).rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (category === 'LTMD') {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (['GLP', 'GLP.SL', 'GLP.SP'].includes(category)) {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (category === 'EVCS') {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (category === 'WW.MU') {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (['WW.GP', 'WW.NP'].includes(category)) {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            } else if (category === 'WW.PR') {
+                const rate = applicableSlabs.find(slab => slab.slab === '0-any').rate / 100;
+                energyCharge = parsedEnergyConsumption * rate;
+                slabDetails = `Rate: ${applicableSlabs.find(slab => slab.slab === '0-any').rate} paise/kWh`;
+                energyChargeFormula = `${parsedEnergyConsumption} * ${rate}`;
+            }
+            energyCharge = energyCharge.toFixed(2);
+            document.getElementById('energyCharge').textContent = `₹ ${energyCharge}`;
+            document.getElementById('energyChargeFormula').textContent = energyChargeFormula;
+            document.getElementById('energyChargeValue').textContent = `₹ ${energyCharge}`;
+            document.getElementById('slabDetails').textContent = slabDetails;
+            document.getElementById('slabDetailsFormula').textContent = 'Based on category (NON BP/BP) and daily consumption slab';
+            document.getElementById('slabDetailsValue').textContent = slabDetails;
+
+            // FPPPA Charge (E)
+            const fpppaCharge = (parsedEnergyConsumption * parsedFpppaRate).toFixed(2);
+            const fpppaChargeFormula = `${parsedEnergyConsumption} * ${parsedFpppaRate}`;
+            document.getElementById('fpppaCharge').textContent = `₹ ${fpppaCharge}`;
+            document.getElementById('fpppaChargeFormula').textContent = fpppaChargeFormula;
+            document.getElementById('fpppaChargeValue').textContent = `₹ ${fpppaCharge}`;
+
+            // Reactive Energy Charge (F)
+            const reactiveCharge = category === 'LTMD' ? (parsedReactiveEnergy * 0.10).toFixed(2) : '0.00';
+            const reactiveChargeFormula = category === 'LTMD' ? `${parsedReactiveEnergy} * 0.10` : '0.00';
+            document.getElementById('reactiveCharge').textContent = `₹ ${reactiveCharge}`;
+            document.getElementById('reactiveChargeFormula').textContent = reactiveChargeFormula;
+            document.getElementById('reactiveChargeValue').textContent = `₹ ${reactiveCharge}`;
+
+            // Electricity Duty (G) - Handle BP exemption for consumption ≤ 250 kWh
+            let edRate = consumer.ed / 100; // Use ED rate from combinationCodes
+            let edCondition = '';
+            if ((parsedComboCode === 91 || parsedComboCode === 2) && dailyConsumption <= 250) {
+                edRate = 0; // BP consumers are duty-free up to 250 kWh daily
+                edCondition = ' (BP: Duty Free ≤ 250 kWh)';
+            } else if (parsedEnergyConsumption === 0) {
+                edRate = 0;
+                edCondition = ' (No consumption)';
+            }
+            const electricityDuty = ((parseFloat(fixedCharge) + parseFloat(demandViolation) + parseFloat(energyCharge) + parseFloat(fpppaCharge)) * edRate).toFixed(2);
+            const electricityDutyFormula = `(${fixedCharge} + ${demandViolation} + ${energyCharge} + ${fpppaCharge}) * ${edRate}${edCondition}`;
+            document.getElementById('electricityDuty').textContent = `₹ ${electricityDuty}`;
+            document.getElementById('electricityDutyFormula').textContent = electricityDutyFormula;
+            document.getElementById('electricityDutyValue').textContent = `₹ ${electricityDuty}`;
+
+            // Basic Electricity Charge (H)
+            const basicElectricityCharge = (parseFloat(fixedCharge) + parseFloat(demandViolation) + parseFloat(energyCharge) + parseFloat(fpppaCharge) + parseFloat(reactiveCharge) + parseFloat(electricityDuty)).toFixed(2);
+            const basicElectricityChargeFormula = `${fixedCharge} + ${demandViolation} + ${energyCharge} + ${fpppaCharge} + ${reactiveCharge} + ${electricityDuty}`;
+            document.getElementById('basicElectricityCharge').textContent = `₹ ${basicElectricityCharge}`;
+            document.getElementById('basicElectricityChargeFormula').textContent = basicElectricityChargeFormula;
+            document.getElementById('basicElectricityChargeValue').textContent = `₹ ${basicElectricityCharge}`;
+
+            // FOA Charge (I), Credit by Utility (J), Debit by Utility (K), Month-end Reconciliation (M), Provisional Adjustments (N)
+            document.getElementById('foaChargeResult').textContent = `₹ ${parsedFoaCharge.toFixed(2)}`;
+            document.getElementById('foaChargeFormula').textContent = 'User Input';
+            document.getElementById('foaChargeValue').textContent = `₹ ${parsedFoaCharge.toFixed(2)}`;
+
+            document.getElementById('creditByUtilityResult').textContent = `₹ ${parsedCreditByUtility.toFixed(2)}`;
+            document.getElementById('creditByUtilityFormula').textContent = 'User Input';
+            document.getElementById('creditByUtilityValue').textContent = `₹ ${parsedCreditByUtility.toFixed(2)}`;
+
+            document.getElementById('debitByUtilityResult').textContent = `₹ ${parsedDebitByUtility.toFixed(2)}`;
+            document.getElementById('debitByUtilityFormula').textContent = 'User Input';
+            document.getElementById('debitByUtilityValue').textContent = `₹ ${parsedDebitByUtility.toFixed(2)}`;
+
+            document.getElementById('monthEndReconciliationResult').textContent = `₹ ${parsedMonthEndReconciliation.toFixed(2)}`;
+            document.getElementById('monthEndReconciliationFormula').textContent = 'User Input';
+            document.getElementById('monthEndReconciliationValue').textContent = `₹ ${parsedMonthEndReconciliation.toFixed(2)}`;
+
+            document.getElementById('provisionalAdjustmentsResult').textContent = `₹ ${parsedProvisionalAdjustments.toFixed(2)}`;
+            document.getElementById('provisionalAdjustmentsFormula').textContent = 'User Input';
+            document.getElementById('provisionalAdjustmentsValue').textContent = `₹ ${parsedProvisionalAdjustments.toFixed(2)}`;
+
+            // Closing Wallet Balance (O) = A - D ± I + J - K + L ± M ± N
+            const closingBalance = (
+                parsedOpeningBalance - 
+                parseFloat(energyCharge) + 
+                parsedFoaCharge + 
+                parsedCreditByUtility - 
+                parsedDebitByUtility + 
+                parsedCreditPurchased + 
+                parsedMonthEndReconciliation + 
+                parsedProvisionalAdjustments
+            ).toFixed(2);
+            const closingBalanceFormula = `${parsedOpeningBalance} - ${energyCharge} + ${parsedFoaCharge} + ${parsedCreditByUtility} - ${parsedDebitByUtility} + ${parsedCreditPurchased} + ${parsedMonthEndReconciliation} + ${parsedProvisionalAdjustments}`;
+            document.getElementById('closingBalance').textContent = `₹ ${closingBalance}`;
+            document.getElementById('closingBalanceFormula').textContent = closingBalanceFormula;
+            document.getElementById('closingBalanceValue').textContent = `₹ ${closingBalance}`;
+        }
+
+        // Attach the calculateTariff function to the button
+        document.getElementById('calculateButton').addEventListener('click', calculateTariff);
+
+        // Initialize Reactive Energy field on page load
+        window.addEventListener('load', function() {
+            const comboSelect = document.getElementById('comboCode');
+            const selectedCode = parseInt(comboSelect.value);
+            const consumer = combinationCodes.find(c => c.code === selectedCode);
+            if (consumer) {
+                const reactiveEnergyInput = document.getElementById('reactiveEnergy');
+                if (consumer.category !== 'LTMD') {
+                    reactiveEnergyInput.value = '0';
+                    reactiveEnergyInput.disabled = true;
+                } else {
+                    reactiveEnergyInput.disabled = false;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
