@@ -210,7 +210,7 @@
                 <h2>Input Details</h2>
                 <form id="tariffForm">
                     <div>
-                        <label>Consumer Category (Combination Code)</label>
+                        <label>Consumer Category (Combination Code) <span style="color: red;">*</span></label>
                         <select id="comboCode"></select>
                     </div>
                     <div>
@@ -222,11 +222,11 @@
                         <input type="text" id="meterNumber" placeholder="Enter Meter Number">
                     </div>
                     <div>
-                        <label>Contract Demand (kW or HP)</label>
+                        <label>Contract Demand (kW or HP) <span style="color: red;">*</span></label>
                         <input type="number" id="contractDemand" step="0.01" min="0" placeholder="Enter kW or HP">
                     </div>
                     <div>
-                        <label>Daily Energy Consumption (kWh)</label>
+                        <label>Daily Energy Consumption (kWh) <span style="color: red;">*</span></label>
                         <input type="number" id="energyConsumption" step="0.01" min="0" placeholder="Enter kWh">
                     </div>
                     <div>
@@ -234,29 +234,16 @@
                         <input type="number" id="reactiveEnergy" step="0.01" min="0" placeholder="Enter kVArh">
                     </div>
                     <div>
-                        <label>FPPPA Rate (₹/kWh)</label>
-                        <input type="number" id="fpppaRate" step="0.01" min="0" value="2.65" placeholder="Enter ₹/kWh">
+                        <label>FPPPA Rate (₹/kWh) <span style="color: red;">*</span></label>
+                        <input type="number" id="fpppaRate" step="0.01" min="0" value="2.45" placeholder="Enter ₹/kWh">
                     </div>
                     <div>
-                        <label>Installation Date</label>
+                        <label>Installation Date <span style="color: red;">*</span></label>
                         <input type="date" id="installDate">
                     </div>
                     <div>
-                        <label>Month</label>
-                        <select id="month">
-                            <option value="1">January</option>
-                            <option value="2">February</option>
-                            <option value="3">March</option>
-                            <option value="4">April</option>
-                            <option value="5">May</option>
-                            <option value="6">June</option>
-                            <option value="7">July</option>
-                            <option value="8">August</option>
-                            <option value="9">September</option>
-                            <option value="10">October</option>
-                            <option value="11">November</option>
-                            <option value="12">December</option>
-                        </select>
+                        <label>Month <span style="color: red;">*</span></label>
+                        <input type="text" id="month" readonly>
                     </div>
                     <div>
                         <label>Opening Wallet Balance (₹)</label>
@@ -388,12 +375,14 @@
             </div>
             <div>
                 <h3>Energy Slab Rates</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <input type="text" id="searchSlab" placeholder="Search by Category" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
-                    <select id="filterSlabCategory" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
-                        <option value="">All Categories</option>
-                    </select>
-                    <button type="button" id="clearSlabFilters" style="padding: 8px 15px; background-color: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 14px;">Clear Filters</button>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="searchSlab" placeholder="Search by Category" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <select id="filterSlabCategory" style="flex: 1; min-width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box;">
+                            <option value="">All Categories</option>
+                        </select>
+                        <button type="button" id="clearSlabFilters" style="padding: 8px 15px; background-color: #555; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 14px; white-space: nowrap;">Clear Filters</button>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table>
@@ -685,7 +674,7 @@
 
             let filteredSlabs = slabRates;
             
-            // Only apply filters if any filter is active
+            // Apply filters if any filter is active
             if (searchText || selectedCategory) {
                 filteredSlabs = slabRates.filter(slab => {
                     const matchesSearch = slab.category.toLowerCase().includes(searchText);
@@ -718,6 +707,17 @@
                 document.getElementById('slabTable').appendChild(row);
             });
         }
+
+        // Add event listeners for slab rates filters
+        document.getElementById('searchSlab').addEventListener('input', filterAndDisplaySlabRates);
+        document.getElementById('filterSlabCategory').addEventListener('change', filterAndDisplaySlabRates);
+
+        // Clear Slab Filters Functionality
+        document.getElementById('clearSlabFilters').addEventListener('click', function() {
+            document.getElementById('searchSlab').value = '';
+            document.getElementById('filterSlabCategory').value = '';
+            filterAndDisplaySlabRates();
+        });
 
         // Add sorting functionality to both tables
         function initializeSorting() {
@@ -779,7 +779,9 @@
             const installDate = new Date(this.value);
             if (!isNaN(installDate)) {
                 const month = installDate.getMonth() + 1; // getMonth() is 0-based, so add 1
-                document.getElementById('month').value = month;
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                  'July', 'August', 'September', 'October', 'November', 'December'];
+                document.getElementById('month').value = monthNames[installDate.getMonth()];
             }
         });
 
@@ -870,7 +872,12 @@
             const parsedReactiveEnergy = parseFloat(reactiveEnergy) || 0;
             const parsedFpppaRate = parseFloat(fpppaRate) || 0;
             const parsedInstallDate = new Date(installDate);
-            const parsedMonth = parseInt(month);
+            let parsedMonth;
+            if (isNaN(parsedInstallDate)) {
+                parsedMonth = new Date().getMonth() + 1; // Default to current month if installDate is invalid
+            } else {
+                parsedMonth = parsedInstallDate.getMonth() + 1;
+            }
             const parsedOpeningBalance = parseFloat(openingBalance) || 0;
             const parsedCreditPurchased = parseFloat(creditPurchased) || 0;
             const parsedFoaCharge = parseFloat(foaCharge) || 0;
@@ -881,7 +888,11 @@
 
             // Calculate Days in Month
             const year = new Date().getFullYear();
-            const daysInMonth = new Date(year, parsedMonth, 0).getDate();
+            let daysInMonth = new Date(year, parsedMonth, 0).getDate();
+            // Ensure daysInMonth is a valid number, default to 30 if NaN or invalid
+            if (isNaN(daysInMonth) || daysInMonth < 1) {
+                daysInMonth = 30; 
+            }
 
             // Display Consumer Number and Meter Number in results
             document.getElementById('consumerNumberResult').textContent = consumerNumber || '-';
@@ -892,9 +903,16 @@
             let billFactorFormula = '1.0000';
             if (parsedInstallDate && !isNaN(parsedInstallDate)) {
                 const installDay = parsedInstallDate.getDate();
-                if (parsedInstallDate.getMonth() + 1 === parsedMonth) {
-                    billFactor = ((daysInMonth - installDay + 1) / daysInMonth);
-                    billFactorFormula = `(${daysInMonth} - ${installDay} + 1) / ${daysInMonth}`;
+                const installMonth = parsedInstallDate.getMonth() + 1;
+                if (installMonth === parsedMonth) {
+                    // Special handling for February
+                    if (parsedMonth === 2) {
+                        billFactor = ((daysInMonth - installDay + 1) / daysInMonth);
+                        billFactorFormula = `(${daysInMonth} - ${installDay} + 1) / ${daysInMonth}`;
+                    } else {
+                        billFactor = ((daysInMonth - installDay) / daysInMonth);
+                        billFactorFormula = `(${daysInMonth} - ${installDay}) / ${daysInMonth}`;
+                    }
                 }
             }
             billFactor = billFactor.toFixed(4);
@@ -907,67 +925,95 @@
             const category = consumer.category;
 
             // Fixed Charge (B)
-            let fixedCharge = 0;
-            let fixedChargeFormula = '';
-            if (['RGPR', 'RGPU'].includes(category)) {
-                if (parsedComboCode === 91 || parsedComboCode === 2) {
-                    fixedCharge = 5.00;
-                    fixedChargeFormula = `5.00 * ${billFactor} / ${daysInMonth}`;
-                } else {
-                    if (parsedContractDemand <= 2) {
-                        fixedCharge = 15.00;
-                        fixedChargeFormula = `15.00 * ${billFactor} / ${daysInMonth}`;
-                    } else if (parsedContractDemand <= 4) {
-                        fixedCharge = 25.00;
-                        fixedChargeFormula = `25.00 * ${billFactor} / ${daysInMonth}`;
-                    } else if (parsedContractDemand <= 6) {
-                        fixedCharge = 25.00;
-                        fixedChargeFormula = `45.00 * ${billFactor} / ${daysInMonth}`;
+            function calculateFixedCharge(combinationCode, contractDemand, billFactor, daysInMonth, category) {
+                // Ensure billFactor is a valid number
+                const validBillFactor = isNaN(parseFloat(billFactor)) ? 1 : parseFloat(billFactor);
+                // Ensure daysInMonth is a valid number
+                const validDaysInMonth = isNaN(daysInMonth) || daysInMonth < 1 ? 30 : daysInMonth;
+
+                let fixedCharge = 0;
+                let fixedChargeFormula = '';
+
+                // RGPR and RGPU
+                if (['RGPR', 'RGPU'].includes(category)) {
+                    if (combinationCode === 91 || combinationCode === 2) {
+                        fixedCharge = 5.00;
+                        fixedChargeFormula = `5.00 * ${validBillFactor} / ${validDaysInMonth}`;
                     } else {
-                        fixedCharge = 70.00;
-                        fixedChargeFormula = `70.00 * ${billFactor} / ${daysInMonth}`;
+                        if (contractDemand <= 2) {
+                            fixedCharge = 15.00;
+                            fixedChargeFormula = `15.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                        } else if (contractDemand <= 4) {
+                            fixedCharge = 25.00;
+                            fixedChargeFormula = `25.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                        } else if (contractDemand <= 6) {
+                            fixedCharge = 45.00;
+                            fixedChargeFormula = `45.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                        } else {
+                            fixedCharge = 70.00;
+                            fixedChargeFormula = `70.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                        }
                     }
                 }
-            } else if (category === 'NRGP') {
-                if (parsedContractDemand <= 10) {
-                    fixedCharge = parsedContractDemand * 50.00;
-                    fixedChargeFormula = `${parsedContractDemand} * 50.00 * ${billFactor} / ${daysInMonth}`;
-                } else {
-                    fixedCharge = 500 + (parsedContractDemand - 10) * 85.00;
-                    fixedChargeFormula = `(500 + (${parsedContractDemand} - 10) * 85.00) * ${billFactor} / ${daysInMonth}`;
+                // NRGP
+                else if (category === 'NRGP') {
+                    if (contractDemand <= 10) {
+                        fixedCharge = contractDemand * 50.00;
+                        fixedChargeFormula = `${contractDemand} * 50.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                    } else {
+                        fixedCharge = 500 + (contractDemand - 10) * 85.00;
+                        fixedChargeFormula = `(500 + (${contractDemand} - 10) * 85.00) * ${validBillFactor} / ${validDaysInMonth}`;
+                    }
                 }
-            } else if (category === 'LTMD') {
-                if (parsedContractDemand <= 40) {
-                    fixedCharge = parsedContractDemand * 90.00;
-                    fixedChargeFormula = `${parsedContractDemand} * 90.00 * ${billFactor} / ${daysInMonth}`;
-                } else if (parsedContractDemand <= 60) {
-                    fixedCharge = 3600 + (parsedContractDemand - 40) * 130.00;
-                    fixedChargeFormula = `(3600 + (${parsedContractDemand} - 40) * 130.00) * ${billFactor} / ${daysInMonth}`;
-                } else {
-                    fixedCharge = 6200 + (parsedContractDemand - 60) * 195.00;
-                    fixedChargeFormula = `(6200 + (${parsedContractDemand} - 60) * 195.00) * ${billFactor} / ${daysInMonth}`;
+                // LTMD
+                else if (category === 'LTMD') {
+                    if (contractDemand <= 40) {
+                        fixedCharge = contractDemand * 90.00;
+                        fixedChargeFormula = `${contractDemand} * 90.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                    } else if (contractDemand <= 60) {
+                        fixedCharge = 3600 + (contractDemand - 40) * 130.00;
+                        fixedChargeFormula = `(3600 + (${contractDemand} - 40) * 130.00) * ${validBillFactor} / ${validDaysInMonth}`;
+                    } else {
+                        fixedCharge = 6200 + (contractDemand - 60) * 195.00;
+                        fixedChargeFormula = `(6200 + (${contractDemand} - 60) * 195.00) * ${validBillFactor} / ${validDaysInMonth}`;
+                    }
                 }
-            } else if (category === 'GLP' || category === 'GLP.SL' || category === 'GLP.SP') {
-                fixedCharge = 70.00;
-                fixedChargeFormula = `70.00 * ${billFactor} / ${daysInMonth}`;
-            } else if (category === 'EVCS') {
-                fixedCharge = 25.00;
-                fixedChargeFormula = `25.00 * ${billFactor} / ${daysInMonth}`;
-            } else if (['WW.MU', 'WW.GP', 'WW.NP', 'WW.PR'].includes(category)) {
-                if (['38', '107'].includes(parsedComboCode.toString())) {
-                    fixedCharge = parsedContractDemand * 20.00;
-                    fixedChargeFormula = `${parsedContractDemand} * 20.00 * ${billFactor} / ${daysInMonth}`;
-                } else if (['36', '37', '108'].includes(parsedComboCode.toString())) {
-                    fixedCharge = 0;
-                    fixedChargeFormula = `0 * ${billFactor} / ${daysInMonth}`;
-                } else {
-                    fixedCharge = parsedContractDemand * 25.00;
-                    fixedChargeFormula = `${parsedContractDemand} * 25.00 * ${billFactor} / ${daysInMonth}`;
+                // GLP, GLP.SL, GLP.SP
+                else if (['GLP', 'GLP.SL', 'GLP.SP'].includes(category)) {
+                    fixedCharge = 70.00;
+                    fixedChargeFormula = `70.00 * ${validBillFactor} / ${validDaysInMonth}`;
                 }
+                // EVCS
+                else if (category === 'EVCS') {
+                    fixedCharge = 25.00;
+                    fixedChargeFormula = `25.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                }
+                // WW.MU, WW.GP, WW.NP, WW.PR
+                else if (['WW.MU', 'WW.GP', 'WW.NP', 'WW.PR'].includes(category)) {
+                    if (['38', '107'].includes(combinationCode.toString())) {
+                        fixedCharge = contractDemand * 20.00;
+                        fixedChargeFormula = `${contractDemand} * 20.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                    } else if (['36', '37', '108'].includes(combinationCode.toString())) {
+                        fixedCharge = 0;
+                        fixedChargeFormula = `0 * ${validBillFactor} / ${validDaysInMonth}`;
+                    } else {
+                        fixedCharge = contractDemand * 25.00;
+                        fixedChargeFormula = `${contractDemand} * 25.00 * ${validBillFactor} / ${validDaysInMonth}`;
+                    }
+                }
+
+                // Calculate the final fixed charge with proper month handling
+                const calculatedFixedCharge = (fixedCharge * validBillFactor) / validDaysInMonth;
+                return {
+                    value: isNaN(calculatedFixedCharge) ? 0 : calculatedFixedCharge.toFixed(2),
+                    formula: fixedChargeFormula
+                };
             }
-            fixedCharge = (fixedCharge * billFactor / daysInMonth).toFixed(2);
+
+            const fixedChargeResult = calculateFixedCharge(parsedComboCode, parsedContractDemand, parseFloat(billFactor), daysInMonth, category);
+            fixedCharge = fixedChargeResult.value;
             document.getElementById('fixedCharge').textContent = `₹ ${fixedCharge}`;
-            document.getElementById('fixedChargeFormula').textContent = fixedChargeFormula;
+            document.getElementById('fixedChargeFormula').textContent = fixedChargeResult.formula;
             document.getElementById('fixedChargeValue').textContent = `₹ ${fixedCharge}`;
 
             // Demand Violation Charge (C)
@@ -1129,9 +1175,9 @@
             // Basic Electricity Charge (H)
             const basicElectricityCharge = (parseFloat(fixedCharge) + parseFloat(demandViolation) + parseFloat(energyCharge) + parseFloat(fpppaCharge) + parseFloat(reactiveCharge) + parseFloat(electricityDuty)).toFixed(2);
             const basicElectricityChargeFormula = `${String(fixedCharge)} + ${String(demandViolation)} + ${String(energyCharge)} + ${String(fpppaCharge)} + ${String(reactiveCharge)} + ${String(electricityDuty)}`;
-            document.getElementById('basicElectricityCharge').textContent = `₹ ${basicElectricityCharge}`;
+            document.getElementById('basicElectricityCharge').innerHTML = `<span class="red-text">₹ ${basicElectricityCharge}</span>`;
             document.getElementById('basicElectricityChargeFormula').textContent = basicElectricityChargeFormula;
-            document.getElementById('basicElectricityChargeValue').textContent = `₹ ${basicElectricityCharge}`;
+            document.getElementById('basicElectricityChargeValue').innerHTML = `<span class="red-text">₹ ${basicElectricityCharge}</span>`;
 
             // FOA Charge (I), Credit by Utility (J), Debit by Utility (K), Month-end Reconciliation (M), Provisional Adjustments (N)
             document.getElementById('foaChargeResult').textContent = `₹ ${parsedFoaCharge.toFixed(2)}`;
@@ -1154,18 +1200,12 @@
             document.getElementById('provisionalAdjustmentsFormula').textContent = 'User Input';
             document.getElementById('provisionalAdjustmentsValue').textContent = `₹ ${parsedProvisionalAdjustments.toFixed(2)}`;
 
-            // Closing Wallet Balance (O) = A - D ± I + J - K + L ± M ± N
+            // Closing Wallet Balance (O) = A - H
             const closingBalance = (
                 parsedOpeningBalance - 
-                parseFloat(energyCharge) + 
-                parsedFoaCharge + 
-                parsedCreditByUtility - 
-                parsedDebitByUtility + 
-                parsedCreditPurchased + 
-                parsedMonthEndReconciliation + 
-                parsedProvisionalAdjustments
+                parseFloat(basicElectricityCharge)
             ).toFixed(2);
-            const closingBalanceFormula = `${String(parsedOpeningBalance)} - ${String(energyCharge)} + ${String(parsedFoaCharge)} + ${String(parsedCreditByUtility)} - ${String(parsedDebitByUtility)} + ${String(parsedCreditPurchased)} + ${String(parsedMonthEndReconciliation)} + ${String(parsedProvisionalAdjustments)}`;
+            const closingBalanceFormula = `${String(parsedOpeningBalance)} - ${String(basicElectricityCharge)}`;
             const closingBalanceColor = parseFloat(closingBalance) < 0 ? 'red-text' : 'green-text';
             document.getElementById('closingBalance').innerHTML = `<span class="${closingBalanceColor}">₹ ${closingBalance}</span>`;
             document.getElementById('closingBalanceFormula').textContent = closingBalanceFormula;
